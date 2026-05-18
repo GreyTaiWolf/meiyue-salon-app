@@ -29,7 +29,7 @@ import {
   isAppointmentInBounds,
   timeToMinutes,
 } from "./lib/schedule";
-import type { AppTab, Appointment, CurrencyCode, ServiceItem, Settings, Staff } from "./types";
+import type { AppTab, Appointment, CurrencyCode, IncomeDisplayMode, ServiceItem, Settings, Staff } from "./types";
 
 const durationOptions = [
   { minutes: 10, label: "10分钟" },
@@ -54,6 +54,12 @@ const currencyOptions: Array<{ code: CurrencyCode; label: string }> = [
   { code: "EUR", label: "欧元 (€)" },
   { code: "USD", label: "美元 ($)" },
   { code: "GBP", label: "英镑 (£)" },
+];
+
+const incomeDisplayOptions: Array<{ mode: IncomeDisplayMode; label: string }> = [
+  { mode: "showAll", label: "全部显示" },
+  { mode: "hideScheduleSummary", label: "部分隐藏：首页收入" },
+  { mode: "hideAllReadOnly", label: "全部隐藏：只读金额" },
 ];
 
 const tabItems: Array<{ id: AppTab; label: string; icon: typeof CalendarDays }> = [
@@ -130,6 +136,7 @@ const App = () => {
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [activeTab, setActiveTab] = useState<AppTab>("schedule");
   const [editingAppointment, setEditingAppointment] = useState<Appointment | undefined>();
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const [viewingStaffId, setViewingStaffId] = useState<string | undefined>();
   const [pendingConflict, setPendingConflict] = useState<{ appointment: Appointment; conflicts: Appointment[] } | undefined>();
 
@@ -141,9 +148,19 @@ const App = () => {
     () => dateAppointments.reduce((sum, appointment) => sum + appointment.price, 0),
     [dateAppointments],
   );
-  const dateStatusLabel = selectedDate === todayISO() ? "今天" : formatWeekday(selectedDate);
+  const currentToday = todayISO(currentDateTime);
+  const hideScheduleIncome = settings.incomeDisplayMode !== "showAll";
+  const dateStatusLabel = selectedDate === currentToday ? "今天" : formatWeekday(selectedDate);
   const firstActiveStaffId = activeStaff[0]?.id ?? staff[0]?.id ?? "";
   const viewingStaff = viewingStaffId ? staff.find((person) => person.id === viewingStaffId) : undefined;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   const openNewAppointment = (staffId = firstActiveStaffId, startTime = settings.businessStart) => {
     if (!staffId) {
@@ -186,7 +203,7 @@ const App = () => {
         </button>
         <div>
           <h1>美约管家</h1>
-          <p>{formatDateTitle(selectedDate)}</p>
+          <p>{formatDateTitle(selectedDate, currentToday)}</p>
         </div>
         <button className="primary-action" type="button" onClick={() => openNewAppointment()}>
           <Plus size={18} />
@@ -200,8 +217,8 @@ const App = () => {
         <button className="icon-button" type="button" aria-label="前一天" onClick={() => setSelectedDate(addDays(selectedDate, -1))}>
           <ChevronLeft size={19} />
         </button>
-        <DatePickerControl selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
-        <button className="today-button" type="button" aria-label="回到今天" onClick={() => setSelectedDate(todayISO())}>
+        <DatePickerControl selectedDate={selectedDate} setSelectedDate={setSelectedDate} todayDate={currentToday} />
+        <button className="today-button" type="button" aria-label="回到今天" onClick={() => setSelectedDate(currentToday)}>
           {dateStatusLabel}
         </button>
         <button className="icon-button" type="button" aria-label="后一天" onClick={() => setSelectedDate(addDays(selectedDate, 1))}>
@@ -209,18 +226,22 @@ const App = () => {
         </button>
       </section>
 
-      <section className="summary-row" aria-label="今日统计">
+      <section className={`summary-row ${hideScheduleIncome ? "single-summary" : ""}`} aria-label="今日统计">
         <StatCard tone="rose" icon={<CalendarDays size={22} />} label="今日预约" value={`${dateAppointments.length} 单`} />
-        <StatCard tone="teal" icon={<WalletCards size={23} />} label="今日收入" value={formatCurrency(income, settings.currencyCode)} />
+        {!hideScheduleIncome ? (
+          <StatCard tone="teal" icon={<WalletCards size={23} />} label="今日收入" value={formatCurrency(income, settings.currencyCode)} />
+        ) : null}
       </section>
 
       <div className="content-area">
         {activeTab === "schedule" ? (
           <ScheduleView
             appointments={dateAppointments}
+            currentDateTime={currentDateTime}
             onEditAppointment={setEditingAppointment}
             onOpenStaff={(staffId) => setViewingStaffId(staffId)}
             onNewAppointment={openNewAppointment}
+            selectedDate={selectedDate}
             settings={settings}
             staff={activeStaff}
           />
@@ -273,6 +294,7 @@ const App = () => {
           onSave={handleSaveAppointment}
           services={services}
           settings={settings}
+          todayDate={currentToday}
         />
       ) : null}
       {viewingStaff ? (
@@ -327,9 +349,10 @@ const StatCard = ({ icon, label, tone, value }: StatCardProps) => (
 interface DatePickerControlProps {
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  todayDate: string;
 }
 
-const DatePickerControl = ({ selectedDate, setSelectedDate }: DatePickerControlProps) => {
+const DatePickerControl = ({ selectedDate, setSelectedDate, todayDate }: DatePickerControlProps) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -342,6 +365,7 @@ const DatePickerControl = ({ selectedDate, setSelectedDate }: DatePickerControlP
       {open ? (
         <CalendarDialog
           selectedDate={selectedDate}
+          todayDate={todayDate}
           onClose={() => setOpen(false)}
           onSelect={(date) => {
             setSelectedDate(date);
@@ -357,13 +381,13 @@ interface CalendarDialogProps {
   onClose: () => void;
   onSelect: (date: string) => void;
   selectedDate: string;
+  todayDate: string;
 }
 
-const CalendarDialog = ({ onClose, onSelect, selectedDate }: CalendarDialogProps) => {
+const CalendarDialog = ({ onClose, onSelect, selectedDate, todayDate }: CalendarDialogProps) => {
   const [viewMonth, setViewMonth] = useState(selectedDate);
   const days = useMemo(() => getCalendarDays(viewMonth), [viewMonth]);
   const selectedMonth = parseISODate(viewMonth).getMonth();
-  const today = todayISO();
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -388,7 +412,7 @@ const CalendarDialog = ({ onClose, onSelect, selectedDate }: CalendarDialogProps
             const inMonth = day.getMonth() === selectedMonth;
             return (
               <button
-                className={`${value === selectedDate ? "selected" : ""} ${value === today ? "today" : ""}`}
+                className={`${value === selectedDate ? "selected" : ""} ${value === todayDate ? "today" : ""}`}
                 key={value}
                 type="button"
                 onClick={() => onSelect(value)}
@@ -402,7 +426,7 @@ const CalendarDialog = ({ onClose, onSelect, selectedDate }: CalendarDialogProps
           <button className="secondary-button" type="button" onClick={onClose}>
             取消
           </button>
-          <button className="save-button" type="button" onClick={() => onSelect(today)}>
+          <button className="save-button" type="button" onClick={() => onSelect(todayDate)}>
             今天
           </button>
         </footer>
@@ -414,10 +438,11 @@ const CalendarDialog = ({ onClose, onSelect, selectedDate }: CalendarDialogProps
 interface DateFieldButtonProps {
   label: string;
   onChange: (date: string) => void;
+  todayDate: string;
   value: string;
 }
 
-const DateFieldButton = ({ label, onChange, value }: DateFieldButtonProps) => {
+const DateFieldButton = ({ label, onChange, todayDate, value }: DateFieldButtonProps) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -430,6 +455,7 @@ const DateFieldButton = ({ label, onChange, value }: DateFieldButtonProps) => {
       {open ? (
         <CalendarDialog
           selectedDate={value}
+          todayDate={todayDate}
           onClose={() => setOpen(false)}
           onSelect={(date) => {
             onChange(date);
@@ -443,20 +469,46 @@ const DateFieldButton = ({ label, onChange, value }: DateFieldButtonProps) => {
 
 interface ScheduleViewProps {
   appointments: Appointment[];
+  currentDateTime: Date;
   onEditAppointment: (appointment: Appointment) => void;
   onOpenStaff: (staffId: string) => void;
   onNewAppointment: (staffId: string, startTime: string) => void;
+  selectedDate: string;
   settings: Settings;
   staff: Staff[];
 }
 
-const ScheduleView = ({ appointments, onEditAppointment, onOpenStaff, onNewAppointment, settings, staff }: ScheduleViewProps) => {
+const ScheduleView = ({
+  appointments,
+  currentDateTime,
+  onEditAppointment,
+  onOpenStaff,
+  onNewAppointment,
+  selectedDate,
+  settings,
+  staff,
+}: ScheduleViewProps) => {
   const [scale, setScale] = useState(1);
   const pinchRef = useRef<{ distance: number; scale: number } | undefined>();
   const slots = useMemo(
     () => createTimeSlots(settings.businessStart, settings.businessEnd, settings.slotMinutes),
     [settings],
   );
+  const currentRowIndex = useMemo(() => {
+    if (selectedDate !== todayISO(currentDateTime)) {
+      return -1;
+    }
+
+    const startMinutes = timeToMinutes(settings.businessStart);
+    const endMinutes = timeToMinutes(settings.businessEnd);
+    const nowMinutes = currentDateTime.getHours() * 60 + currentDateTime.getMinutes();
+
+    if (nowMinutes < startMinutes || nowMinutes >= endMinutes) {
+      return -1;
+    }
+
+    return Math.floor((nowMinutes - startMinutes) / settings.slotMinutes);
+  }, [currentDateTime, selectedDate, settings]);
   const baseSlotHeight = Math.max(32, Math.round((settings.slotMinutes / 30) * 56));
   const slotHeight = Math.round(baseSlotHeight * scale);
   const timeColumnWidth = Math.round(Math.max(46, 58 * scale));
@@ -599,6 +651,13 @@ const ScheduleView = ({ appointments, onEditAppointment, onOpenStaff, onNewAppoi
               />
             )),
           )}
+          {currentRowIndex >= 0 && currentRowIndex < slots.length ? (
+            <div
+              aria-hidden="true"
+              className="current-time-row"
+              style={{ gridColumn: "1 / -1", gridRow: currentRowIndex + 2 }}
+            />
+          ) : null}
           {appointments.map((appointment) => {
             const person = getStaffById(staff, appointment.staffId);
             if (!person) {
@@ -627,7 +686,9 @@ const ScheduleView = ({ appointments, onEditAppointment, onOpenStaff, onNewAppoi
               >
                 <strong className="appointment-customer">{appointment.customerName || "未命名客户"}</strong>
                 <span className="appointment-service">{appointment.service || "未填写服务"}</span>
-                <small>{formatCurrency(appointment.price, settings.currencyCode)}</small>
+                {settings.incomeDisplayMode === "hideAllReadOnly" ? null : (
+                  <small>{formatCurrency(appointment.price, settings.currencyCode)}</small>
+                )}
               </button>
             );
           })}
@@ -646,6 +707,7 @@ interface AppointmentSheetProps {
   onSave: (appointment: Appointment) => Promise<void>;
   services: ServiceItem[];
   settings: Settings;
+  todayDate: string;
 }
 
 const AppointmentSheet = ({
@@ -657,6 +719,7 @@ const AppointmentSheet = ({
   onSave,
   services,
   settings,
+  todayDate,
 }: AppointmentSheetProps) => {
   const [form, setForm] = useState(appointment);
   const [saving, setSaving] = useState(false);
@@ -736,6 +799,7 @@ const AppointmentSheet = ({
           <label>
             <ServicePickerField
               currencyCode={settings.currencyCode}
+              hidePrice={settings.incomeDisplayMode === "hideAllReadOnly"}
               onChange={applyService}
               services={services}
               value={form.service}
@@ -760,7 +824,7 @@ const AppointmentSheet = ({
               ))}
             </select>
           </label>
-          <DateFieldButton label="日期" value={form.date} onChange={(date) => updateForm("date", date)} />
+          <DateFieldButton label="日期" todayDate={todayDate} value={form.date} onChange={(date) => updateForm("date", date)} />
           <label>
             开始时间
             <select value={form.startTime} onChange={(event) => updateForm("startTime", event.target.value)}>
@@ -802,12 +866,13 @@ const AppointmentSheet = ({
 
 interface ServicePickerFieldProps {
   currencyCode: CurrencyCode;
+  hidePrice?: boolean;
   onChange: (serviceName: string) => void;
   services: ServiceItem[];
   value: string;
 }
 
-const ServicePickerField = ({ currencyCode, onChange, services, value }: ServicePickerFieldProps) => {
+const ServicePickerField = ({ currencyCode, hidePrice = false, onChange, services, value }: ServicePickerFieldProps) => {
   const [open, setOpen] = useState(false);
   const search = value.trim().toLowerCase();
   const visibleServices = useMemo(
@@ -860,7 +925,7 @@ const ServicePickerField = ({ currencyCode, onChange, services, value }: Service
                     <strong>{service.name}</strong>
                     <small>{durationLabel(service.durationMinutes)}</small>
                   </span>
-                  <b>{formatCurrency(service.price, currencyCode)}</b>
+                  {!hidePrice ? <b>{formatCurrency(service.price, currencyCode)}</b> : null}
                 </button>
               ))
             ) : (
@@ -1137,6 +1202,7 @@ interface LedgerViewProps {
 const LedgerView = ({ appointments, selectedDate, settings, staff }: LedgerViewProps) => {
   const staffTotals = useMemo(() => getStaffTotals(staff, appointments), [appointments, staff]);
   const income = appointments.reduce((sum, appointment) => sum + appointment.price, 0);
+  const hideReadOnlyIncome = settings.incomeDisplayMode === "hideAllReadOnly";
 
   return (
     <section className="panel-section">
@@ -1144,19 +1210,25 @@ const LedgerView = ({ appointments, selectedDate, settings, staff }: LedgerViewP
         <h2>账本汇总</h2>
         <span>{selectedDate}</span>
       </header>
-      <div className="ledger-summary">
+      <div className={`ledger-summary ${hideReadOnlyIncome ? "single-summary" : ""}`}>
         <StatCard tone="rose" icon={<CalendarDays size={22} />} label="预约数量" value={`${appointments.length} 单`} />
-        <StatCard tone="teal" icon={<WalletCards size={23} />} label="收入合计" value={formatCurrency(income, settings.currencyCode)} />
+        {!hideReadOnlyIncome ? (
+          <StatCard tone="teal" icon={<WalletCards size={23} />} label="收入合计" value={formatCurrency(income, settings.currencyCode)} />
+        ) : null}
       </div>
       <div className="staff-total-list">
         {staffTotals.map(({ staff: person, count, income: staffIncome }) => (
-          <article className="staff-total-row" key={person.id} style={{ "--staff-color": person.color } as React.CSSProperties}>
+          <article
+            className={`staff-total-row ${hideReadOnlyIncome ? "income-hidden" : ""}`}
+            key={person.id}
+            style={{ "--staff-color": person.color } as React.CSSProperties}
+          >
             <span className="avatar">{staffInitial(person.name)}</span>
             <div>
               <strong>{person.name}</strong>
               <small>{count} 单</small>
             </div>
-            <b>{formatCurrency(staffIncome, settings.currencyCode)}</b>
+            {!hideReadOnlyIncome ? <b>{formatCurrency(staffIncome, settings.currencyCode)}</b> : null}
           </article>
         ))}
       </div>
@@ -1164,14 +1236,14 @@ const LedgerView = ({ appointments, selectedDate, settings, staff }: LedgerViewP
         {appointments.map((appointment) => {
           const person = getStaffById(staff, appointment.staffId);
           return (
-            <article className="ledger-appointment" key={appointment.id}>
+            <article className={`ledger-appointment ${hideReadOnlyIncome ? "income-hidden" : ""}`} key={appointment.id}>
               <div>
                 <strong>{appointment.customerName}</strong>
                 <span>
                   {appointment.startTime}-{appointmentEndTime(appointment, settings)} · {person?.name ?? "未知员工"}
                 </span>
               </div>
-              <b>{formatCurrency(appointment.price, settings.currencyCode)}</b>
+              {!hideReadOnlyIncome ? <b>{formatCurrency(appointment.price, settings.currencyCode)}</b> : null}
             </article>
           );
         })}
@@ -1192,6 +1264,7 @@ interface SettingsViewProps {
 const SettingsView = ({ addService, deleteService, saveSettings, services, settings, updateService }: SettingsViewProps) => {
   const [draft, setDraft] = useState(settings);
   const [newService, setNewService] = useState({ durationMinutes: 60, name: "", price: 0 });
+  const [servicesOpen, setServicesOpen] = useState(false);
   const clockOptions = useMemo(() => createClockOptions(), []);
 
   useEffect(() => {
@@ -1270,45 +1343,67 @@ const SettingsView = ({ addService, deleteService, saveSettings, services, setti
             ))}
           </select>
         </label>
+        <label>
+          收入显示
+          <select
+            value={draft.incomeDisplayMode}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, incomeDisplayMode: event.target.value as IncomeDisplayMode }))
+            }
+          >
+            {incomeDisplayOptions.map((option) => (
+              <option key={option.mode} value={option.mode}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button className="save-button" type="submit">
           保存设置
         </button>
       </form>
       <section className="service-settings" aria-label="服务项目设置">
-        <header className="section-title compact-title">
-          <h2>服务项目</h2>
+        <button className="service-settings-toggle" type="button" onClick={() => setServicesOpen((current) => !current)}>
           <span>
-            {services.length} 项 · {currencyOptions.find((option) => option.code === draft.currencyCode)?.label ?? draft.currencyCode}
+            <strong>服务项目</strong>
+            <small>
+              {services.length} 项 · {currencyOptions.find((option) => option.code === draft.currencyCode)?.label ?? draft.currencyCode}
+            </small>
           </span>
-        </header>
-        <form className="service-add-form" onSubmit={handleAddService}>
-          <input value={newService.name} onChange={(event) => setNewService((current) => ({ ...current, name: event.target.value }))} placeholder="服务名称" />
-          <input
-            value={newService.price || ""}
-            inputMode="decimal"
-            onChange={(event) => setNewService((current) => ({ ...current, price: Number(event.target.value.replace(/[^\d.]/g, "")) }))}
-            placeholder="价格"
-          />
-          <select
-            value={newService.durationMinutes}
-            onChange={(event) => setNewService((current) => ({ ...current, durationMinutes: Number(event.target.value) }))}
-          >
-            {durationOptions.map((option) => (
-              <option key={option.minutes} value={option.minutes}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button type="submit">
-            <Plus size={17} />
-            添加
-          </button>
-        </form>
-        <div className="service-list">
-          {services.map((service) => (
-            <ServiceRow deleteService={deleteService} key={service.id} service={service} updateService={updateService} />
-          ))}
-        </div>
+          <ChevronDown className={servicesOpen ? "expanded" : ""} size={18} />
+        </button>
+        {servicesOpen ? (
+          <div className="service-settings-body">
+            <form className="service-add-form" onSubmit={handleAddService}>
+              <input value={newService.name} onChange={(event) => setNewService((current) => ({ ...current, name: event.target.value }))} placeholder="服务名称" />
+              <input
+                value={newService.price || ""}
+                inputMode="decimal"
+                onChange={(event) => setNewService((current) => ({ ...current, price: Number(event.target.value.replace(/[^\d.]/g, "")) }))}
+                placeholder="价格"
+              />
+              <select
+                value={newService.durationMinutes}
+                onChange={(event) => setNewService((current) => ({ ...current, durationMinutes: Number(event.target.value) }))}
+              >
+                {durationOptions.map((option) => (
+                  <option key={option.minutes} value={option.minutes}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <button type="submit">
+                <Plus size={17} />
+                添加
+              </button>
+            </form>
+            <div className="service-list">
+              {services.map((service) => (
+                <ServiceRow deleteService={deleteService} key={service.id} service={service} updateService={updateService} />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
       <div className="native-note">
         <Clock3 size={18} />

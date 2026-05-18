@@ -114,6 +114,7 @@ const normalizeSettings = (settings: Settings | undefined): Settings | undefined
     ...defaultSettings,
     ...settings,
     currencyCode: settings.currencyCode ?? defaultSettings.currencyCode,
+    incomeDisplayMode: settings.incomeDisplayMode ?? defaultSettings.incomeDisplayMode,
   };
 };
 
@@ -151,7 +152,7 @@ export const loadSalonData = async (): Promise<SalonData> => {
   if (!nextSettings) {
     await putSettings(defaultSettings);
     nextSettings = defaultSettings;
-  } else if (!settings?.currencyCode) {
+  } else if (!settings?.currencyCode || !settings?.incomeDisplayMode) {
     await putSettings(nextSettings);
   }
 

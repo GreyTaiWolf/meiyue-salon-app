@@ -6,14 +6,14 @@ export const defaultSettings: Settings = {
   businessStart: "09:00",
   businessEnd: "21:00",
   currencyCode: "CNY",
+  incomeDisplayMode: "showAll",
   slotMinutes: 30,
 };
 
 export const defaultStaff: Staff[] = [
-  { id: "staff-zhang", name: "张美丽", active: true, color: staffPalette[0] },
-  { id: "staff-li", name: "李婷婷", active: true, color: staffPalette[1] },
-  { id: "staff-wang", name: "王小雨", active: true, color: staffPalette[2] },
-  { id: "staff-liu", name: "刘佳佳", active: true, color: staffPalette[3] },
+  { id: "staff-xiaomei", name: "小美", active: true, color: staffPalette[0] },
+  { id: "staff-shadachun", name: "傻大春", active: true, color: staffPalette[1] },
+  { id: "staff-xiaotian", name: "小甜", active: true, color: staffPalette[2] },
 ];
 
 export const defaultServices: ServiceItem[] = [
@@ -27,49 +27,4 @@ export const defaultServices: ServiceItem[] = [
 
 export const serviceSuggestions = defaultServices.map((service) => service.name);
 
-export const createSeedAppointments = (date: string): Appointment[] => [
-  {
-    id: "appt-seed-1",
-    date,
-    staffId: "staff-zhang",
-    startTime: "09:00",
-    durationMinutes: 90,
-    customerName: "王女士",
-    phone: "138 8888 8888",
-    service: "美甲(延长)",
-    price: 198,
-  },
-  {
-    id: "appt-seed-2",
-    date,
-    staffId: "staff-li",
-    startTime: "10:00",
-    durationMinutes: 60,
-    customerName: "孙女士",
-    phone: "139 6666 6688",
-    service: "美睫(自然款)",
-    price: 228,
-  },
-  {
-    id: "appt-seed-3",
-    date,
-    staffId: "staff-wang",
-    startTime: "10:30",
-    durationMinutes: 90,
-    customerName: "李女士",
-    phone: "136 7777 7777",
-    service: "美容护理",
-    price: 398,
-  },
-  {
-    id: "appt-seed-4",
-    date,
-    staffId: "staff-liu",
-    startTime: "13:30",
-    durationMinutes: 60,
-    customerName: "杨小姐",
-    phone: "135 1234 5678",
-    service: "美甲(单色)",
-    price: 128,
-  },
-];
+export const createSeedAppointments = (_date: string): Appointment[] => [];

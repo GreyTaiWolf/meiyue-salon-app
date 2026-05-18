@@ -224,6 +224,11 @@ button {
   padding: 0 16px 12px;
 }
 
+.summary-row.single-summary,
+.ledger-summary.single-summary {
+  grid-template-columns: 1fr;
+}
+
 .stat-card {
   align-items: center;
   background: var(--surface);
@@ -448,6 +453,16 @@ button {
   border-bottom: 1px dashed var(--line);
   border-right: 1px solid rgba(231, 233, 239, 0.72);
   min-height: var(--slot-height);
+}
+
+.current-time-row {
+  background: rgba(32, 178, 170, 0.12);
+  border-bottom: 1px solid rgba(32, 178, 170, 0.45);
+  border-top: 1px solid rgba(32, 178, 170, 0.45);
+  box-shadow: inset 4px 0 0 rgba(32, 178, 170, 0.72);
+  min-height: var(--slot-height);
+  pointer-events: none;
+  z-index: 4;
 }
 
 .time-cell:focus-visible,
@@ -772,6 +787,11 @@ button {
   grid-template-columns: 36px minmax(0, 1fr) auto;
 }
 
+.staff-total-row.income-hidden,
+.ledger-appointment.income-hidden {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
 .staff-total-row strong {
   display: block;
   font-size: 15px;
@@ -794,6 +814,10 @@ button {
 
 .ledger-appointment {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.ledger-appointment.income-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .ledger-appointment strong,
@@ -998,6 +1022,45 @@ button {
   border-top: 1px solid var(--line);
   margin-top: 18px;
   padding-top: 16px;
+}
+
+.service-settings-toggle {
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: flex;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.service-settings-toggle strong,
+.service-settings-toggle small {
+  display: block;
+}
+
+.service-settings-toggle small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.service-settings-toggle svg {
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+
+.service-settings-toggle svg.expanded {
+  transform: rotate(180deg);
+}
+
+.service-settings-body {
+  margin-top: 12px;
 }
 
 .compact-title {
@@ -1303,7 +1366,19 @@ button {
   }
 
   .form-grid {
-    grid-template-columns: 1fr;
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .form-grid label {
+    min-width: 0;
+  }
+
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea,
+  .form-date-button {
+    padding-inline: 10px;
   }
 
   .service-add-form,

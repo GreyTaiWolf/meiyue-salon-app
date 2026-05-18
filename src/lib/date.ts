@@ -7,7 +7,7 @@ export const toDateInputValue = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-export const todayISO = (): string => toDateInputValue(new Date());
+export const todayISO = (date = new Date()): string => toDateInputValue(date);
 
 export const addDays = (isoDate: string, days: number): string => {
   const date = new Date(`${isoDate}T00:00:00`);
@@ -15,10 +15,9 @@ export const addDays = (isoDate: string, days: number): string => {
   return toDateInputValue(date);
 };
 
-export const formatDateTitle = (isoDate: string): string => {
+export const formatDateTitle = (isoDate: string, today = todayISO()): string => {
   const date = new Date(`${isoDate}T00:00:00`);
   const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(date);
-  const today = todayISO();
   const relative = isoDate === today ? "今天" : isoDate === addDays(today, 1) ? "明天" : isoDate === addDays(today, -1) ? "昨天" : "";
   return `${isoDate} ${relative} ${weekday}`.replace(/\s+/g, " ").trim();
 };

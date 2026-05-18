@@ -27,11 +27,13 @@ export interface ServiceItem {
 }
 
 export type CurrencyCode = "CNY" | "EUR" | "USD" | "GBP";
+export type IncomeDisplayMode = "showAll" | "hideScheduleSummary" | "hideAllReadOnly";
 
 export interface Settings {
   businessStart: string;
   businessEnd: string;
   currencyCode: CurrencyCode;
+  incomeDisplayMode: IncomeDisplayMode;
   slotMinutes: number;
 }
 
