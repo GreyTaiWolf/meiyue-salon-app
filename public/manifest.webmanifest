@@ -1,0 +1,18 @@
+{
+  "name": "美约管家",
+  "short_name": "美约",
+  "description": "美甲美容院预约排班与本机记账工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff8fb",
+  "theme_color": "#f45b8a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

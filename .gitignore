@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.apk
+.DS_Store
+
+android/.gradle/
+android/local.properties
+android/**/build/
+
+ios/App/Pods/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/*.xcworkspace/xcuserdata/
+ios/App/*.xcodeproj/xcuserdata/
+ios/App/*.xcodeproj/project.xcworkspace/xcuserdata/
