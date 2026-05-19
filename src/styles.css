@@ -455,6 +455,17 @@ button {
   min-height: var(--slot-height);
 }
 
+.past-time-label {
+  color: #9aa3b0;
+}
+
+.past-time-cell {
+  background:
+    linear-gradient(to right, rgba(211, 215, 223, 0.85) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(211, 215, 223, 0.78) 1px, transparent 1px),
+    rgba(239, 241, 245, 0.85);
+}
+
 .current-time-row {
   background: rgba(32, 178, 170, 0.12);
   border-bottom: 1px solid rgba(32, 178, 170, 0.45);
