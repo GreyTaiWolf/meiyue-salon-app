@@ -27,8 +27,20 @@ npm run cap:sync
 需要先安装：
 
 - Android Studio
-- JDK 17 或 Android Studio 自带 JBR
-- Android SDK / Build Tools
+- JDK 21
+- Android SDK / Build Tools 35
+
+当前 Windows 本机可用 JDK 路径：
+
+```powershell
+$env:JAVA_HOME='C:\Users\chena\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2'
+```
+
+因为项目路径包含中文，`android/gradle.properties` 需要保留：
+
+```properties
+android.overridePathCheck=true
+```
 
 安装好后可运行：
 
@@ -40,6 +52,12 @@ Debug APK 输出位置：
 
 ```text
 android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+为了方便发送给手机测试，也可以复制到项目根目录并命名为：
+
+```text
+美约管家-debug.apk
 ```
 
 正式发布包：

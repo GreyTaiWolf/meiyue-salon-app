@@ -114,6 +114,7 @@ const normalizeSettings = (settings: Settings | undefined): Settings | undefined
     ...defaultSettings,
     ...settings,
     currencyCode: settings.currencyCode ?? defaultSettings.currencyCode,
+    customerMemoryEnabled: settings.customerMemoryEnabled ?? defaultSettings.customerMemoryEnabled,
     incomeDisplayMode: settings.incomeDisplayMode ?? defaultSettings.incomeDisplayMode,
   };
 };
@@ -152,7 +153,7 @@ export const loadSalonData = async (): Promise<SalonData> => {
   if (!nextSettings) {
     await putSettings(defaultSettings);
     nextSettings = defaultSettings;
-  } else if (!settings?.currencyCode || !settings?.incomeDisplayMode) {
+  } else if (!settings?.currencyCode || settings?.customerMemoryEnabled === undefined || !settings?.incomeDisplayMode) {
     await putSettings(nextSettings);
   }
 

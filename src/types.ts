@@ -33,6 +33,7 @@ export interface Settings {
   businessStart: string;
   businessEnd: string;
   currencyCode: CurrencyCode;
+  customerMemoryEnabled: boolean;
   incomeDisplayMode: IncomeDisplayMode;
   slotMinutes: number;
 }

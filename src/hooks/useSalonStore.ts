@@ -28,6 +28,7 @@ export const useSalonStore = () => {
     businessStart: "09:00",
     businessEnd: "21:00",
     currencyCode: "CNY",
+    customerMemoryEnabled: true,
     incomeDisplayMode: "showAll",
     slotMinutes: 30,
   });

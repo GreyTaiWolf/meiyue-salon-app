@@ -3,6 +3,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Check,
   Clock3,
   NotebookTabs,
   Plus,
@@ -13,7 +14,9 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSalonStore } from "./hooks/useSalonStore";
 import { addDays, formatCurrency, formatDateTitle, formatWeekday, todayISO } from "./lib/date";
 import {
@@ -113,6 +116,185 @@ const durationLabel = (minutes: number): string => {
   return `${Math.floor(minutes / 60)}小时${minutes % 60}分钟`;
 };
 
+interface CustomerMemoryRecord {
+  key: string;
+  lastSeen: string;
+  name: string;
+  phone: string;
+}
+
+const normalizeMemoryText = (value: string): string => value.trim().toLowerCase();
+
+const normalizePhoneDigits = (value: string): string => value.replace(/\D/g, "");
+
+const appointmentMemoryStamp = (appointment: Appointment): string => `${appointment.date} ${appointment.startTime}`;
+
+const buildCustomerMemory = (appointments: Appointment[]): CustomerMemoryRecord[] => {
+  const records = new Map<string, CustomerMemoryRecord>();
+  const sortedAppointments = [...appointments].sort((a, b) => appointmentMemoryStamp(b).localeCompare(appointmentMemoryStamp(a)));
+
+  sortedAppointments.forEach((appointment) => {
+    const name = appointment.customerName.trim();
+    const phone = appointment.phone.trim();
+    if (!name && !phone) {
+      return;
+    }
+
+    const phoneDigits = normalizePhoneDigits(phone);
+    const key = phoneDigits ? `phone:${phoneDigits}` : `name:${normalizeMemoryText(name)}`;
+    if (records.has(key)) {
+      return;
+    }
+
+    records.set(key, {
+      key,
+      lastSeen: appointment.date,
+      name,
+      phone,
+    });
+  });
+
+  return Array.from(records.values()).slice(0, 120);
+};
+
+type AppBackHandler = () => void;
+
+let appBackHandlerId = 0;
+const appBackHandlers: Array<{ handler: AppBackHandler; id: number }> = [];
+
+const registerAppBackHandler = (handler: AppBackHandler): (() => void) => {
+  const entry = { handler, id: ++appBackHandlerId };
+  appBackHandlers.push(entry);
+
+  return () => {
+    const index = appBackHandlers.findIndex((candidate) => candidate.id === entry.id);
+    if (index >= 0) {
+      appBackHandlers.splice(index, 1);
+    }
+  };
+};
+
+const runLatestAppBackHandler = (): boolean => {
+  const latest = appBackHandlers[appBackHandlers.length - 1];
+  if (!latest) {
+    return false;
+  }
+
+  latest.handler();
+  return true;
+};
+
+const useAppBackHandler = (enabled: boolean, handler: AppBackHandler) => {
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+
+    return registerAppBackHandler(handler);
+  }, [enabled, handler]);
+};
+
+type SelectOptionValue = string | number;
+
+interface SelectSheetOption<Value extends SelectOptionValue> {
+  description?: string;
+  label: string;
+  value: Value;
+}
+
+interface SelectSheetFieldProps<Value extends SelectOptionValue> {
+  className?: string;
+  compact?: boolean;
+  label: string;
+  onChange: (value: Value) => void;
+  options: Array<SelectSheetOption<Value>>;
+  title?: string;
+  value: Value;
+}
+
+const SelectSheetField = <Value extends SelectOptionValue>({
+  className,
+  compact = false,
+  label,
+  onChange,
+  options,
+  title,
+  value,
+}: SelectSheetFieldProps<Value>) => {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+  const selectedRef = useRef<HTMLButtonElement | null>(null);
+
+  useAppBackHandler(open, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      selectedRef.current?.scrollIntoView({ block: "center" });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [open, value]);
+
+  return (
+    <div className={`select-sheet-field ${compact ? "compact-select" : ""} ${className ?? ""}`.trim()}>
+      <span className={compact ? "visually-hidden" : ""}>{label}</span>
+      <button
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="select-sheet-trigger"
+        type="button"
+        onClick={() => setOpen(true)}
+      >
+        <span>{selectedOption?.label ?? "请选择"}</span>
+        <ChevronDown size={17} />
+      </button>
+      {open ? (
+        <div className="select-sheet-backdrop" role="presentation" onMouseDown={(event) => event.currentTarget === event.target && setOpen(false)}>
+          <section className="select-sheet" role="dialog" aria-modal="true" aria-label={title ?? label}>
+            <div className="select-sheet-handle" />
+            <header className="select-sheet-header">
+              <h2>{title ?? label}</h2>
+              <button className="secondary-button" type="button" onClick={() => setOpen(false)}>
+                关闭
+              </button>
+            </header>
+            <div className="select-sheet-options" role="listbox" aria-label={title ?? label}>
+              {options.map((option) => {
+                const selected = option.value === value;
+                return (
+                  <button
+                    aria-selected={selected}
+                    className="select-sheet-option"
+                    key={String(option.value)}
+                    ref={selected ? selectedRef : undefined}
+                    role="option"
+                    type="button"
+                    onClick={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                  >
+                    <span>
+                      <strong>{option.label}</strong>
+                      {option.description ? <small>{option.description}</small> : null}
+                    </span>
+                    {selected ? <Check size={17} /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const App = () => {
   const {
     activeStaff,
@@ -140,11 +322,13 @@ const App = () => {
   const [viewingStaffId, setViewingStaffId] = useState<string | undefined>();
   const [pendingConflict, setPendingConflict] = useState<{ appointment: Appointment; conflicts: Appointment[] } | undefined>();
   const [appointmentDrafts, setAppointmentDrafts] = useState<Record<string, Appointment>>({});
+  const [showExitDialog, setShowExitDialog] = useState(false);
 
   const dateAppointments = useMemo(
     () => getAppointmentsForDate(appointments, selectedDate),
     [appointments, selectedDate],
   );
+  const customerMemory = useMemo(() => buildCustomerMemory(appointments), [appointments]);
   const income = useMemo(
     () => dateAppointments.reduce((sum, appointment) => sum + appointment.price, 0),
     [dateAppointments],
@@ -154,6 +338,13 @@ const App = () => {
   const dateStatusLabel = selectedDate === currentToday ? "今天" : formatWeekday(selectedDate);
   const firstActiveStaffId = activeStaff[0]?.id ?? staff[0]?.id ?? "";
   const viewingStaff = viewingStaffId ? staff.find((person) => person.id === viewingStaffId) : undefined;
+  const handleAppBack = useCallback(() => {
+    if (!runLatestAppBackHandler()) {
+      setShowExitDialog(true);
+    }
+  }, []);
+
+  useAppBackHandler(showExitDialog, () => setShowExitDialog(false));
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -162,6 +353,43 @@ const App = () => {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      return undefined;
+    }
+
+    let active = true;
+    let listener: { remove: () => Promise<void> } | undefined;
+
+    void CapacitorApp.addListener("backButton", () => {
+      handleAppBack();
+    }).then((handle) => {
+      if (active) {
+        listener = handle;
+      } else {
+        void handle.remove();
+      }
+    });
+
+    return () => {
+      active = false;
+      void listener?.remove();
+    };
+  }, [handleAppBack]);
+
+  useEffect(() => {
+    const guardState = { meiyueBackGuard: true };
+    window.history.pushState(guardState, "", window.location.href);
+
+    const handlePopState = () => {
+      handleAppBack();
+      window.history.pushState(guardState, "", window.location.href);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [handleAppBack]);
 
   const getDraftKey = (date: string, staffId: string, startTime: string) => `${date}::${staffId}::${startTime}`;
 
@@ -298,6 +526,7 @@ const App = () => {
           activeStaff={activeStaff}
           allStaff={staff}
           appointment={editingAppointment}
+          customerMemory={customerMemory}
           onClose={(nextForm, dirty) => {
             const isExisting = appointments.some((item) => item.id === nextForm.id);
             if (!isExisting) {
@@ -351,6 +580,20 @@ const App = () => {
           }}
           settings={settings}
           staff={staff}
+        />
+      ) : null}
+      {showExitDialog ? (
+        <ConfirmDialog
+          confirmLabel="退出 App"
+          description="确认后会关闭当前应用，已保存的预约和设置会继续保留在本机。"
+          onCancel={() => setShowExitDialog(false)}
+          onConfirm={async () => {
+            setShowExitDialog(false);
+            if (Capacitor.isNativePlatform()) {
+              await CapacitorApp.exitApp();
+            }
+          }}
+          title="是否退出 App？"
         />
       ) : null}
     </main>
@@ -417,9 +660,11 @@ const CalendarDialog = ({ onClose, onSelect, selectedDate, todayDate }: Calendar
   const days = useMemo(() => getCalendarDays(viewMonth), [viewMonth]);
   const selectedMonth = parseISODate(viewMonth).getMonth();
 
+  useAppBackHandler(true, onClose);
+
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <section className="calendar-dialog" role="dialog" aria-modal="true" aria-label="选择日期">
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.currentTarget === event.target && onClose()}>
+      <section className="calendar-dialog" role="dialog" aria-modal="true" aria-label="选择日期" onMouseDown={(event) => event.stopPropagation()}>
         <header className="calendar-header">
           <button className="icon-button" type="button" aria-label="上个月" onClick={() => setViewMonth(addMonths(viewMonth, -1))}>
             <ChevronLeft size={18} />
@@ -739,6 +984,7 @@ interface AppointmentSheetProps {
   activeStaff: Staff[];
   allStaff: Staff[];
   appointment: Appointment;
+  customerMemory: CustomerMemoryRecord[];
   onClose: (nextForm: Appointment, dirty: boolean) => void;
   onDelete: (appointmentId: string) => Promise<void>;
   onSave: (appointment: Appointment) => Promise<void>;
@@ -751,6 +997,7 @@ const AppointmentSheet = ({
   activeStaff,
   allStaff,
   appointment,
+  customerMemory,
   onClose,
   onDelete,
   onSave,
@@ -771,6 +1018,15 @@ const AppointmentSheet = ({
     const active = activeStaff;
     return currentStaff && !active.some((person) => person.id === currentStaff.id) ? [...active, currentStaff] : active;
   }, [activeStaff, allStaff, form.staffId]);
+  const staffSelectOptions = useMemo(
+    () => staffOptions.map((person) => ({ label: person.name, value: person.id })),
+    [staffOptions],
+  );
+  const slotSelectOptions = useMemo(() => slots.map((slot) => ({ label: slot, value: slot })), [slots]);
+  const durationSelectOptions = useMemo(
+    () => durationOptions.map((option) => ({ label: option.label, value: option.minutes })),
+    [],
+  );
 
   useEffect(() => {
     setForm(appointment);
@@ -778,6 +1034,8 @@ const AppointmentSheet = ({
   }, [appointment]);
 
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
+
+  useAppBackHandler(true, () => onClose(form, isDirty));
 
   const updateForm = <Key extends keyof Appointment>(key: Key, value: Appointment[Key]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -790,6 +1048,14 @@ const AppointmentSheet = ({
       service: serviceName,
       price: matchedService ? matchedService.price : current.price,
       durationMinutes: matchedService ? matchedService.durationMinutes : current.durationMinutes,
+    }));
+  };
+
+  const applyCustomerMemory = (record: CustomerMemoryRecord) => {
+    setForm((current) => ({
+      ...current,
+      customerName: record.name || current.customerName,
+      phone: record.phone || current.phone,
     }));
   };
 
@@ -829,14 +1095,27 @@ const AppointmentSheet = ({
         </header>
 
         <div className="form-grid">
-          <label>
-            客户姓名
-            <input value={form.customerName} onChange={(event) => updateForm("customerName", event.target.value)} placeholder="王女士" />
-          </label>
-          <label>
-            电话
-            <input value={form.phone} inputMode="tel" onChange={(event) => updateForm("phone", event.target.value)} placeholder="138 8888 8888" />
-          </label>
+          <CustomerMemoryInput
+            enabled={settings.customerMemoryEnabled}
+            field="name"
+            label="客户姓名"
+            memory={customerMemory}
+            onSelect={applyCustomerMemory}
+            onValueChange={(value) => updateForm("customerName", value)}
+            placeholder="王女士"
+            value={form.customerName}
+          />
+          <CustomerMemoryInput
+            enabled={settings.customerMemoryEnabled}
+            field="phone"
+            inputMode="tel"
+            label="电话"
+            memory={customerMemory}
+            onSelect={applyCustomerMemory}
+            onValueChange={(value) => updateForm("phone", value)}
+            placeholder="138 8888 8888"
+            value={form.phone}
+          />
           <label>
             <ServicePickerField
               currencyCode={settings.currencyCode}
@@ -855,37 +1134,16 @@ const AppointmentSheet = ({
               placeholder="198"
             />
           </label>
-          <label>
-            员工
-            <select value={form.staffId} onChange={(event) => updateForm("staffId", event.target.value)}>
-              {staffOptions.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectSheetField label="员工" title="选择员工" value={form.staffId} options={staffSelectOptions} onChange={(value) => updateForm("staffId", value)} />
           <DateFieldButton label="日期" todayDate={todayDate} value={form.date} onChange={(date) => updateForm("date", date)} />
-          <label>
-            开始时间
-            <select value={form.startTime} onChange={(event) => updateForm("startTime", event.target.value)}>
-              {slots.map((slot) => (
-                <option key={slot} value={slot}>
-                  {slot}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            时长
-            <select value={form.durationMinutes} onChange={(event) => updateForm("durationMinutes", Number(event.target.value))}>
-              {durationOptions.map((option) => (
-                <option key={option.minutes} value={option.minutes}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SelectSheetField label="开始时间" title="选择开始时间" value={form.startTime} options={slotSelectOptions} onChange={(value) => updateForm("startTime", value)} />
+          <SelectSheetField
+            label="时长"
+            title="选择预约时长"
+            value={form.durationMinutes}
+            options={durationSelectOptions}
+            onChange={(value) => updateForm("durationMinutes", value)}
+          />
           <label className="wide-field">
             备注（可选）
             <textarea value={form.note ?? ""} onChange={(event) => updateForm("note", event.target.value)} placeholder="请输入备注" />
@@ -902,6 +1160,108 @@ const AppointmentSheet = ({
         </footer>
       </form>
     </div>
+  );
+};
+
+interface CustomerMemoryInputProps {
+  enabled: boolean;
+  field: "name" | "phone";
+  inputMode?: "tel";
+  label: string;
+  memory: CustomerMemoryRecord[];
+  onSelect: (record: CustomerMemoryRecord) => void;
+  onValueChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}
+
+const CustomerMemoryInput = ({
+  enabled,
+  field,
+  inputMode,
+  label,
+  memory,
+  onSelect,
+  onValueChange,
+  placeholder,
+  value,
+}: CustomerMemoryInputProps) => {
+  const [open, setOpen] = useState(false);
+  const query = normalizeMemoryText(value);
+  const queryDigits = normalizePhoneDigits(value);
+  const suggestions = useMemo(() => {
+    if (!enabled || (!query && !queryDigits)) {
+      return [];
+    }
+
+    return memory
+      .filter((record) => {
+        const name = normalizeMemoryText(record.name);
+        const phoneDigits = normalizePhoneDigits(record.phone);
+        if (field === "name") {
+          return name.includes(query) || (!!queryDigits && phoneDigits.includes(queryDigits));
+        }
+        return (!!queryDigits && phoneDigits.includes(queryDigits)) || (!!query && name.includes(query));
+      })
+      .slice(0, 6);
+  }, [enabled, field, memory, query, queryDigits]);
+  const showSuggestions = open && suggestions.length > 0;
+
+  const selectRecord = (record: CustomerMemoryRecord) => {
+    onSelect(record);
+    setOpen(false);
+  };
+
+  return (
+    <label className="customer-memory-field">
+      {label}
+      <div className="customer-memory-input">
+        <input
+          aria-autocomplete="list"
+          aria-expanded={showSuggestions}
+          aria-label={label}
+          inputMode={inputMode}
+          value={value}
+          onBlur={() => window.setTimeout(() => setOpen(false), 100)}
+          onChange={(event) => {
+            onValueChange(event.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && suggestions[0]) {
+              event.preventDefault();
+              selectRecord(suggestions[0]);
+            }
+            if (event.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+          placeholder={placeholder}
+        />
+        {showSuggestions ? (
+          <div className="customer-memory-menu" role="listbox" aria-label={`${label}历史客户`}>
+            {suggestions.map((record) => (
+              <button
+                aria-selected="false"
+                key={record.key}
+                role="option"
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => selectRecord(record)}
+              >
+                <span>
+                  <strong>{record.name || "未命名客户"}</strong>
+                  <small>{record.phone || "未记录电话"}</small>
+                </span>
+                <em>{record.lastSeen}</em>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </label>
   );
 };
 
@@ -989,6 +1349,7 @@ interface ConflictDialogProps {
 
 const ConflictDialog = ({ conflicts, onCancel, onContinue, settings, staff }: ConflictDialogProps) => {
   const [saving, setSaving] = useState(false);
+  useAppBackHandler(true, onCancel);
   
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -1045,6 +1406,7 @@ interface ConfirmDialogProps {
 
 const ConfirmDialog = ({ confirmLabel, description, onCancel, onConfirm, title }: ConfirmDialogProps) => {
   const [saving, setSaving] = useState(false);
+  useAppBackHandler(true, onCancel);
   
   return (
     <div className="dialog-backdrop top-dialog" role="presentation">
@@ -1144,8 +1506,10 @@ const StaffDetailSheet = ({ appointments, onClose, onDelete, person, updateStaff
   const [draftName, setDraftName] = useState(person.name);
   const [active, setActive] = useState(person.active);
   const [saving, setSaving] = useState(false);
-    const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const appointmentCount = appointments.filter((appointment) => appointment.staffId === person.id).length;
+
+  useAppBackHandler(true, onClose);
 
   useEffect(() => {
     setDraftName(person.name);
@@ -1307,6 +1671,30 @@ const SettingsView = ({ addService, deleteService, saveSettings, services, setti
   const [newService, setNewService] = useState({ durationMinutes: 60, name: "", price: 0 });
   const [servicesOpen, setServicesOpen] = useState(false);
   const clockOptions = useMemo(() => createClockOptions(), []);
+  const clockSelectOptions = useMemo(() => clockOptions.map((option) => ({ label: option, value: option })), [clockOptions]);
+  const slotSelectOptions = useMemo(
+    () => slotIntervalOptions.map((option) => ({ label: option.label, value: option.minutes })),
+    [],
+  );
+  const currencySelectOptions = useMemo(
+    () => currencyOptions.map((option) => ({ label: option.label, value: option.code })),
+    [],
+  );
+  const incomeDisplaySelectOptions = useMemo(
+    () => incomeDisplayOptions.map((option) => ({ label: option.label, value: option.mode })),
+    [],
+  );
+  const customerMemorySelectOptions = useMemo(
+    () => [
+      { description: "姓名和电话从已保存预约自动补全", label: "开启", value: "enabled" },
+      { description: "预约表单只保留手动输入", label: "关闭", value: "disabled" },
+    ],
+    [],
+  );
+  const durationSelectOptions = useMemo(
+    () => durationOptions.map((option) => ({ label: option.label, value: option.minutes })),
+    [],
+  );
 
   useEffect(() => {
     setDraft(settings);
@@ -1339,66 +1727,48 @@ const SettingsView = ({ addService, deleteService, saveSettings, services, setti
         <span>{draft.slotMinutes}分钟一格</span>
       </header>
       <form className="settings-form" onSubmit={handleSubmit}>
-        <label>
-          营业开始
-          <select value={draft.businessStart} onChange={(event) => setDraft((current) => ({ ...current, businessStart: event.target.value }))}>
-            {clockOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          营业结束
-          <select value={draft.businessEnd} onChange={(event) => setDraft((current) => ({ ...current, businessEnd: event.target.value }))}>
-            {clockOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          时间间隔
-          <select value={draft.slotMinutes} onChange={(event) => setDraft((current) => ({ ...current, slotMinutes: Number(event.target.value) }))}>
-            {slotIntervalOptions.map((option) => (
-              <option key={option.minutes} value={option.minutes}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          收入货币
-          <select
-            value={draft.currencyCode}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, currencyCode: event.target.value as CurrencyCode }))
-            }
-          >
-            {currencyOptions.map((option) => (
-              <option key={option.code} value={option.code}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          收入显示
-          <select
-            value={draft.incomeDisplayMode}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, incomeDisplayMode: event.target.value as IncomeDisplayMode }))
-            }
-          >
-            {incomeDisplayOptions.map((option) => (
-              <option key={option.mode} value={option.mode}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectSheetField
+          label="营业开始"
+          title="选择营业开始时间"
+          value={draft.businessStart}
+          options={clockSelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, businessStart: value }))}
+        />
+        <SelectSheetField
+          label="营业结束"
+          title="选择营业结束时间"
+          value={draft.businessEnd}
+          options={clockSelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, businessEnd: value }))}
+        />
+        <SelectSheetField
+          label="时间间隔"
+          title="选择时间间隔"
+          value={draft.slotMinutes}
+          options={slotSelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, slotMinutes: value }))}
+        />
+        <SelectSheetField
+          label="收入货币"
+          title="选择收入货币"
+          value={draft.currencyCode}
+          options={currencySelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, currencyCode: value }))}
+        />
+        <SelectSheetField
+          label="收入显示"
+          title="选择收入显示"
+          value={draft.incomeDisplayMode}
+          options={incomeDisplaySelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, incomeDisplayMode: value }))}
+        />
+        <SelectSheetField
+          label="客户记忆"
+          title="选择客户记忆"
+          value={draft.customerMemoryEnabled ? "enabled" : "disabled"}
+          options={customerMemorySelectOptions}
+          onChange={(value) => setDraft((current) => ({ ...current, customerMemoryEnabled: value === "enabled" }))}
+        />
         <button className="save-button" type="submit">
           保存设置
         </button>
@@ -1423,16 +1793,14 @@ const SettingsView = ({ addService, deleteService, saveSettings, services, setti
                 onChange={(event) => setNewService((current) => ({ ...current, price: Number(event.target.value.replace(/[^\d.]/g, "")) }))}
                 placeholder="价格"
               />
-              <select
+              <SelectSheetField
+                compact
+                label="服务时长"
+                title="选择服务时长"
                 value={newService.durationMinutes}
-                onChange={(event) => setNewService((current) => ({ ...current, durationMinutes: Number(event.target.value) }))}
-              >
-                {durationOptions.map((option) => (
-                  <option key={option.minutes} value={option.minutes}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                options={durationSelectOptions}
+                onChange={(value) => setNewService((current) => ({ ...current, durationMinutes: value }))}
+              />
               <button type="submit">
                 <Plus size={17} />
                 添加
@@ -1463,6 +1831,10 @@ interface ServiceRowProps {
 const ServiceRow = ({ deleteService, service, updateService }: ServiceRowProps) => {
   const [draft, setDraft] = useState(service);
   const [saving, setSaving] = useState(false);
+  const durationSelectOptions = useMemo(
+    () => durationOptions.map((option) => ({ label: option.label, value: option.minutes })),
+    [],
+  );
   
   useEffect(() => {
     setDraft(service);
@@ -1502,17 +1874,14 @@ const ServiceRow = ({ deleteService, service, updateService }: ServiceRowProps) 
         onChange={(event) => setDraft((current) => ({ ...current, price: Number(event.target.value.replace(/[^\d.]/g, "")) }))}
         aria-label="服务价格"
       />
-      <select
+      <SelectSheetField
+        compact
+        label="服务时长"
+        title="选择服务时长"
         value={draft.durationMinutes}
-        onChange={(event) => setDraft((current) => ({ ...current, durationMinutes: Number(event.target.value) }))}
-        aria-label="服务时长"
-      >
-        {durationOptions.map((option) => (
-          <option key={option.minutes} value={option.minutes}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        options={durationSelectOptions}
+        onChange={(value) => setDraft((current) => ({ ...current, durationMinutes: value }))}
+      />
       <div className="service-row-actions">
         <button className="secondary-button" disabled={saving} type="button" onClick={saveService}>
           {saving ? "保存中" : "保存"}
