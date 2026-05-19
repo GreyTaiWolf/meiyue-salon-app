@@ -494,21 +494,22 @@ const ScheduleView = ({
     () => createTimeSlots(settings.businessStart, settings.businessEnd, settings.slotMinutes),
     [settings],
   );
+  const isTodaySchedule = selectedDate === todayISO(currentDateTime);
+  const nowMinutes = currentDateTime.getHours() * 60 + currentDateTime.getMinutes();
   const currentRowIndex = useMemo(() => {
-    if (selectedDate !== todayISO(currentDateTime)) {
+    if (!isTodaySchedule) {
       return -1;
     }
 
     const startMinutes = timeToMinutes(settings.businessStart);
     const endMinutes = timeToMinutes(settings.businessEnd);
-    const nowMinutes = currentDateTime.getHours() * 60 + currentDateTime.getMinutes();
 
     if (nowMinutes < startMinutes || nowMinutes >= endMinutes) {
       return -1;
     }
 
     return Math.floor((nowMinutes - startMinutes) / settings.slotMinutes);
-  }, [currentDateTime, selectedDate, settings]);
+  }, [isTodaySchedule, nowMinutes, settings]);
   const baseSlotHeight = Math.max(32, Math.round((settings.slotMinutes / 30) * 56));
   const slotHeight = Math.round(baseSlotHeight * scale);
   const timeColumnWidth = Math.round(Math.max(46, 58 * scale));
@@ -633,23 +634,31 @@ const ScheduleView = ({
           {slots.map((slot, slotIndex) => {
             const minute = timeToMinutes(slot) % 60;
             const isMajorTime = minute === 0 || minute === 30;
+            const isPastSlot = isTodaySchedule && timeToMinutes(slot) < nowMinutes;
             return (
-            <div className={`time-label ${isMajorTime ? "major-time-label" : "fine-time-label"}`} key={slot} style={{ gridRow: slotIndex + 2 }}>
-              <span>{slot}</span>
-            </div>
+              <div
+                className={`time-label ${isMajorTime ? "major-time-label" : "fine-time-label"} ${isPastSlot ? "past-time-label" : ""}`}
+                key={slot}
+                style={{ gridRow: slotIndex + 2 }}
+              >
+                <span>{slot}</span>
+              </div>
             );
           })}
           {staff.flatMap((person, staffIndex) =>
-            slots.map((slot, slotIndex) => (
-              <button
-                aria-label={`${person.name} ${slot} 新增预约`}
-                className="time-cell"
-                key={`${person.id}-${slot}`}
-                style={{ gridColumn: staffIndex + 2, gridRow: slotIndex + 2 }}
-                type="button"
-                onClick={() => onNewAppointment(person.id, slot)}
-              />
-            )),
+            slots.map((slot, slotIndex) => {
+              const isPastSlot = isTodaySchedule && timeToMinutes(slot) < nowMinutes;
+              return (
+                <button
+                  aria-label={`${person.name} ${slot} 新增预约`}
+                  className={`time-cell ${isPastSlot ? "past-time-cell" : ""}`}
+                  key={`${person.id}-${slot}`}
+                  style={{ gridColumn: staffIndex + 2, gridRow: slotIndex + 2 }}
+                  type="button"
+                  onClick={() => onNewAppointment(person.id, slot)}
+                />
+              );
+            }),
           )}
           {currentRowIndex >= 0 && currentRowIndex < slots.length ? (
             <div
