@@ -139,6 +139,7 @@ const App = () => {
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const [viewingStaffId, setViewingStaffId] = useState<string | undefined>();
   const [pendingConflict, setPendingConflict] = useState<{ appointment: Appointment; conflicts: Appointment[] } | undefined>();
+  const [appointmentDrafts, setAppointmentDrafts] = useState<Record<string, Appointment>>({});
 
   const dateAppointments = useMemo(
     () => getAppointmentsForDate(appointments, selectedDate),
@@ -162,12 +163,16 @@ const App = () => {
     return () => window.clearInterval(timer);
   }, []);
 
+  const getDraftKey = (date: string, staffId: string, startTime: string) => `${date}::${staffId}::${startTime}`;
+
   const openNewAppointment = (staffId = firstActiveStaffId, startTime = settings.businessStart) => {
     if (!staffId) {
       setActiveTab("staff");
       return;
     }
-    setEditingAppointment(createAppointment(selectedDate, staffId, startTime));
+    const draftKey = getDraftKey(selectedDate, staffId, startTime);
+    const savedDraft = appointmentDrafts[draftKey];
+    setEditingAppointment(savedDraft ?? createAppointment(selectedDate, staffId, startTime));
   };
 
   const handleSaveAppointment = async (appointment: Appointment) => {
@@ -183,6 +188,13 @@ const App = () => {
     }
 
     await saveAppointment(appointment);
+    setAppointmentDrafts((current) => {
+      const draftKey = getDraftKey(appointment.date, appointment.staffId, appointment.startTime);
+      if (!(draftKey in current)) return current;
+      const next = { ...current };
+      delete next[draftKey];
+      return next;
+    });
     setEditingAppointment(undefined);
   };
 
@@ -286,7 +298,23 @@ const App = () => {
           activeStaff={activeStaff}
           allStaff={staff}
           appointment={editingAppointment}
-          onClose={() => setEditingAppointment(undefined)}
+          onClose={(nextForm, dirty) => {
+            const isExisting = appointments.some((item) => item.id === nextForm.id);
+            if (!isExisting) {
+              const draftKey = getDraftKey(nextForm.date, nextForm.staffId, nextForm.startTime);
+              const hasCustomerName = nextForm.customerName.trim().length > 0;
+              setAppointmentDrafts((current) => {
+                const next = { ...current };
+                if (dirty || hasCustomerName) {
+                  next[draftKey] = nextForm;
+                } else {
+                  delete next[draftKey];
+                }
+                return next;
+              });
+            }
+            setEditingAppointment(undefined);
+          }}
           onDelete={async (appointmentId) => {
             await deleteAppointment(appointmentId);
             setEditingAppointment(undefined);
@@ -711,7 +739,7 @@ interface AppointmentSheetProps {
   activeStaff: Staff[];
   allStaff: Staff[];
   appointment: Appointment;
-  onClose: () => void;
+  onClose: (nextForm: Appointment, dirty: boolean) => void;
   onDelete: (appointmentId: string) => Promise<void>;
   onSave: (appointment: Appointment) => Promise<void>;
   services: ServiceItem[];
@@ -732,6 +760,7 @@ const AppointmentSheet = ({
 }: AppointmentSheetProps) => {
   const [form, setForm] = useState(appointment);
   const [saving, setSaving] = useState(false);
+  const [initialForm, setInitialForm] = useState(appointment);
   const currencyLabel = currencyOptions.find((option) => option.code === settings.currencyCode)?.label ?? settings.currencyCode;
   const slots = useMemo(
     () => createTimeSlots(settings.businessStart, settings.businessEnd, settings.slotMinutes),
@@ -745,7 +774,10 @@ const AppointmentSheet = ({
 
   useEffect(() => {
     setForm(appointment);
+    setInitialForm(appointment);
   }, [appointment]);
+
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
 
   const updateForm = <Key extends keyof Appointment>(key: Key, value: Appointment[Key]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -780,8 +812,8 @@ const AppointmentSheet = ({
   };
 
   return (
-    <div className="sheet-backdrop" role="presentation">
-      <form className="appointment-sheet" onSubmit={handleSubmit}>
+    <div className="sheet-backdrop" role="presentation" onClick={() => onClose(form, isDirty)}>
+      <form className="appointment-sheet" onClick={(event) => event.stopPropagation()} onSubmit={handleSubmit}>
         <div className="sheet-handle" />
         <header className="sheet-header">
           <div>
@@ -861,7 +893,7 @@ const AppointmentSheet = ({
         </div>
 
         <footer className="sheet-actions">
-          <button className="secondary-button" type="button" onClick={onClose}>
+          <button className="secondary-button" type="button" onClick={() => onClose(form, isDirty)}>
             取消
           </button>
           <button className="save-button" disabled={saving} type="submit">
@@ -957,7 +989,7 @@ interface ConflictDialogProps {
 
 const ConflictDialog = ({ conflicts, onCancel, onContinue, settings, staff }: ConflictDialogProps) => {
   const [saving, setSaving] = useState(false);
-
+  
   return (
     <div className="dialog-backdrop" role="presentation">
       <section className="conflict-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
@@ -1013,7 +1045,7 @@ interface ConfirmDialogProps {
 
 const ConfirmDialog = ({ confirmLabel, description, onCancel, onConfirm, title }: ConfirmDialogProps) => {
   const [saving, setSaving] = useState(false);
-
+  
   return (
     <div className="dialog-backdrop top-dialog" role="presentation">
       <section className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
@@ -1112,7 +1144,7 @@ const StaffDetailSheet = ({ appointments, onClose, onDelete, person, updateStaff
   const [draftName, setDraftName] = useState(person.name);
   const [active, setActive] = useState(person.active);
   const [saving, setSaving] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
   const appointmentCount = appointments.filter((appointment) => appointment.staffId === person.id).length;
 
   useEffect(() => {
@@ -1431,7 +1463,7 @@ interface ServiceRowProps {
 const ServiceRow = ({ deleteService, service, updateService }: ServiceRowProps) => {
   const [draft, setDraft] = useState(service);
   const [saving, setSaving] = useState(false);
-
+  
   useEffect(() => {
     setDraft(service);
   }, [service]);
